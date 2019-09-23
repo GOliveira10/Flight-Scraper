@@ -2,17 +2,10 @@ library(rvest)
 library(RSelenium)
 library(tidyverse)
 library(lubridate)
-
+library(reshape2)
 
 airport_codes <- read_csv("airport-codes.csv")
 base_url <- "https://skiplagged.com/flights"
-
-init <- function(){
-  driver <- rsDriver(port = 4774L, browser = c("chrome"), chromever="76.0.3809.25")
-  
-  remDr <- driver[["client"]]
-  
-}
 
 
 
@@ -161,14 +154,23 @@ return(clean_data_frame)
 
 
 
-explore_prices <- function(from, to, leave = NULL, return = NULL, duration, interval = NULL){
+explore_prices <- function(from, 
+                           to, 
+                           depart_wday, 
+                           return_wday, 
+                           window, 
+                           leave = NULL, 
+                           return = NULL, 
+                           duration = NULL, 
+                           interval = NULL){
 
+  
 if(is.null(leave) & !is.null(duration)){  
   
 
 message("Creating date sequence")
 
-end_date <- Sys.Date() + days(30) 
+end_date <- Sys.Date() + days(window) 
 
 if(is.null(interval)){
   interval <- duration
@@ -183,11 +185,30 @@ dates <- tibble(start, end)
 dates$start <- as.character(dates$start)
 dates$end <- as.character(dates$end)
 
+}
+  
+if(!is.null(depart_wday) & !is.null(return_wday)){
+
+  init_dates <- seq.Date(from = Sys.Date() + days(1), to = Sys.Date() + days(7), by = 1)
+  
+  start <- init_dates[which(wday(init_dates) == depart_wday)]
+  end <- init_dates[which(wday(init_dates) == return_wday)]
+  
+  duration <- end - start
+  start <- seq.Date(from=start, by = 7, length.out = window)
+  end <- seq.Date(from=end, by = 7, length.out = window)
+  dates <- tibble(start, end)
+  dates$start <- as.character(dates$start)
+  dates$end <- as.character(dates$end)
+  
+}  
+  
+  
+
 skiplagged_url <- create_flight_url(from = from, 
-                                    to = to)
-
-
-
+                                      to = to)
+    
+  
 all_dates <- tibble()
 
 for(row in 1:nrow(dates)){
@@ -200,16 +221,33 @@ new_url <- paste0(skiplagged_url, path)
 remDr$navigate(new_url)
 
 
-Sys.sleep(1.5)
+Sys.sleep(2)
 
 trip_xpath <- '//*[contains(concat( " ", @class, " " ), concat( " ", "no-touch", " " ))]'
 
 
-
+# data <- list()
+# repeat{
 data <- extract_elements(trip_xpath)
+
+Sys.sleep(1)
+if(length(data) == 0){
+  
+  data <- extract_elements(trip_xpath)
+}
+
 
 clean_data <- data %>% raw_list_to_dataframe(leave = dates$start[row], 
                                              return = dates$end[row])
+
+Sys.sleep(1)
+
+if(nrow(clean_data) == 0){
+  clean_data <- data %>% raw_list_to_dataframe(leave = dates$start[row], 
+                                               return = dates$end[row])
+  
+}
+
 
 all_dates <- bind_rows(all_dates, clean_data)
 
@@ -218,20 +256,26 @@ all_dates <- bind_rows(all_dates, clean_data)
 all_dates$price <- as.numeric(gsub("\\$", "", all_dates$price))
 all_dates <- all_dates %>% arrange(price)
 return(all_dates)
+
 }
-}
+
+driver <- rsDriver(port = 4779L, browser = c("chrome"), chromever="76.0.3809.25")
+
+remDr <- driver[["client"]]
 
 
 
-options <- explore_prices("Los Angeles", "Seattle", interval = 2, duration = 3)
 
-options$price <- as.numeric(gsub("\\$", "", options$price))
+options <- explore_prices("Los Angeles", "Seattle", depart_wday = "5", return_wday = "2", window = 12)
+
 
 options %>% group_by(leave) %>% 
-  summarize(price = min(price)) %>% 
-  ggplot(aes(x=as.Date(leave), y = price)) +
-  geom_line() + scale_y_continuous(labels = scales::dollar) + scale_x_date(date_labels = "%a %B %d") +
-  labs(x="Date", y = "Price") + ggtitle("3 Day Flights LAX-Seattle")
+  summarize(min_price = min(price),
+            median_price = median(price),
+            max_price = max(price)) %>% melt(id.vars = "leave") %>% 
+  ggplot(aes(x=as.Date(leave), y = value, color = variable)) +
+  geom_line() + scale_y_continuous(labels = scales::dollar) + scale_x_date(date_labels = "%a %B %d", breaks = "7 days") +
+  labs(x="Date", y = "Price") + ggtitle("Thurs - Monday Trips fromn LAX to Seattle")
 
 
 # airlines_xpath <- '//*[contains(concat( " ", @class, " " ), concat( " ", "airlines-lg", " " ))]'
