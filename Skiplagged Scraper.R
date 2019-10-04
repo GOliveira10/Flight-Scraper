@@ -137,8 +137,19 @@ to_airport <- airport_codes %>%
 
 extract_elements <- function(x, using = 'xpath'){
 
+  Sys.sleep(.5)
+ # x <- trip_xpath_A
   
-  elements <- remDr$findElements(using = using, x)
+  using <- 'xpath'
+  
+  repeat{
+  try(elements <- remDr$findElements(using = using, x), TRUE)
+    if(remDr$status != 7){
+      elements <- remDr$findElements(using = using, x)
+      break
+    }
+  }
+  
   
   extract_trip_from_element <- function(x){
     trip_data <- x$getElementText()
@@ -147,7 +158,17 @@ extract_elements <- function(x, using = 'xpath'){
   }
 
 data <- list()
-data <- sapply(elements, extract_trip_from_element)
+
+repeat{
+try(sapply(elements, extract_trip_from_element), TRUE)
+
+  if(remDr$status != 7){
+    data <- sapply(elements, extract_trip_from_element)
+    break
+  }  
+}
+  
+
 
 
 return(data)
@@ -159,11 +180,22 @@ return(data)
 
 raw_list_to_dataframe <- function(x, leave, return){
   
-  #x <- data
+  # x <- data
+  
+  
+  clear_blanks <- function(x){
+    if(length(x) < 3){
+      return(NULL)
+    } else {
+      return(x)
+    }
+  }
+  
+  clean_data <- lapply(x, clear_blanks)
   
   clean_data_frame <- tibble()
   for(i in 1:length(x)){
-    trip_item <- x[[1]] %>% as.character()
+    trip_item <- x[[i]] %>% as.character()
     if(is.null(trip_item)){
       next
     }
@@ -214,18 +246,18 @@ explore_prices <- function(from = NULL,
                            one_way = FALSE,
                            try_alternate_routes = TRUE){
 
-  # from = "LAX" 
-  # to = "SEA" 
-  # depart_wday = NULL 
-  # return_wday = NULL 
+  # from = "LAX"
+  # to = "SEA"
+  # depart_wday = NULL
+  # return_wday = NULL
   # window = 10
   # window_start = Sys.Date()
-  # leave = NULL 
-  # return = NULL 
-  # duration = 4 
+  # leave = NULL
+  # return = NULL
+  # duration = 4
   # interval = 1
   # one_way = FALSE
-  # try_alternate_routes = TRUE  
+  # try_alternate_routes = TRUE
   
   
   
@@ -322,8 +354,8 @@ if(try_alternate_routes == TRUE){
            to_rank = rank(to_dist),
            avg_rank = rank(avg_dist))
   
-  possible_airports <- possible_airports %>% filter(from_rank <= 3 | to_rank <= 3 | avg_rank <= 3)
-
+  possible_airports <- possible_airports %>% filter(from_rank <= 2 | to_rank <= 2 | avg_rank <= 2)
+  
   
   url_1 <- map(possible_airports$iata_code, function(x) create_flight_url(from = from, to = x)) %>% unlist()
   url_2 <- map(possible_airports$iata_code, function(x) create_flight_url(from = x, to = to)) %>% unlist()
@@ -370,15 +402,16 @@ get_flight_data <- function(urls){
 all_dates <- tibble()  
 for(row in 1:nrow(urls)){
 
- # row <- 1
+# row <- 1
 
   remDr$navigate(urls$url[row])
 
 
   Sys.sleep(2)
 
-  #trip_xpath <- '//*[contains(concat( " ", @class, " " ), concat( " ", "no-touch", " " ))]'
-  trip_xpath <- '//*[contains(concat( " ", @class, " " ), concat( " ", "skip-trip", " " ))]'
+  
+  trip_xpath_A <- '//*[contains(concat( " ", @class, " " ), concat( " ", "no-touch", " " ))]'
+  trip_xpath_B <- '//*[contains(concat( " ", @class, " " ), concat( " ", "skip-trip", " " ))]'
 
   data <- list()
   timeout <- FALSE
@@ -386,25 +419,39 @@ for(row in 1:nrow(urls)){
 
 repeat{
   
-  Sys.sleep(.5)
-  data <- extract_elements(trip_xpath)
+  Sys.sleep(2)
+  data <- extract_elements(trip_xpath_A)
 
 
-  if(length(data) > 0){
-    
+  if(length(data) > 3){
+    # print(data)
     break
   }
+  
+  data <- extract_elements(trip_xpath_B)
+  
+  
+  if(length(data) > 3){
+    # print(data)
+    break
+  }
+  
+  remDr$refresh()
   
 }
 
   
 repeat{
   
+  Sys.sleep(.2)
+ # row <- 1
+#  urls <- urls %>% filter(url == "https://skiplagged.com/flights/LAX/SEA/2019-10-09/2019-10-13")
+  
   clean_data <- data %>% raw_list_to_dataframe(leave = urls$start[row], 
                                              return = urls$end[row])
 
   
-  
+  print(clean_data)
   # clean_data$price <- as.numeric(gsub("\\$", "", clean_data$price))
 
 if(nrow(clean_data) > 1){
@@ -420,7 +467,7 @@ if(Sys.time() - start_time > 15){
 
 if(timeout == TRUE){
   message("Exiting due to page timeout")
-  break
+  next
 }
 
 clean_data$type <- urls$type[row]
@@ -433,7 +480,7 @@ all_dates <- bind_rows(all_dates, clean_data)
 all_dates <- all_dates # %>% arrange(price)
 
 attr(all_dates, which = "trip") <- paste0(from, "-", to)
-attr(all_dates, which = "window") <- paste0(as.character(wday(start, label = TRUE)), " to ", as.character(wday(end, label = TRUE)))
+#attr(all_dates, which = "window") <- paste0(as.character(wday(start, label = TRUE)), " to ", as.character(wday(end, label = TRUE)))
 attr(all_dates, which = "duration") <- paste0("Trip Duration: ", duration, " Days")
 
 all_dates$number_of_stops <- str_count(all_dates$route, "-")
@@ -464,7 +511,7 @@ remDr <- driver[["client"]]
 
 
 
-options <- explore_prices("LAX", "SEA", duration = 14, interval = 1, window = 7)
+options <- explore_prices("LAX", "SEA", duration = 14, interval = 1, window = 2)
 
 
 summarized_options <- options %>% group_by(leave, number_of_stops) %>% 
