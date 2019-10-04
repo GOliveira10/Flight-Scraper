@@ -24,6 +24,45 @@ airport_codes <- airport_codes %>% filter(!is.na(iata_code) & type != "closed")
 airport_codes <- airport_codes %>% group_by(iata_code) %>% summarise_all(first)
 
 
+test_data <- function(rm=FALSE){
+  
+  if(rm == FALSE){
+  assign("from", "LAX", envir = .GlobalEnv)
+  assign("to", "SEA", envir = .GlobalEnv)
+  assign("depart_wday", NULL, envir = .GlobalEnv)
+  assign("return_wday", NULL, envir = .GlobalEnv)
+  assign("window", 10, envir = .GlobalEnv)
+  assign("window_start", Sys.Date(), envir = .GlobalEnv)
+  assign("leave", NULL, envir = .GlobalEnv)
+  assign("return", NULL, envir = .GlobalEnv)
+  assign("duration", 4, envir = .GlobalEnv)
+  assign("interval", 1, envir = .GlobalEnv)
+  assign("one_way", FALSE, envir = .GlobalEnv)
+  assign("try_alternate_routes", TRUE, envir = .GlobalEnv)
+  assign("row", 1, envir = .GlobalEnv)
+  } else{
+    
+    rm(list=c("from", 
+             "to", 
+             "depart_wday", 
+             "return_wday", 
+             "window", 
+             "window_start",
+             "leave",
+             "return",
+             "duration",
+             "interval",
+             "one_way",
+             "try_alternate_routes",
+             "row"))
+    
+  }
+  
+}
+
+
+
+
 calculate_distance <- function(from, to){
   
   lat_1 <- airport_codes %>% filter(iata_code == from) %>% .$lat %>% as.numeric()
@@ -137,17 +176,24 @@ to_airport <- airport_codes %>%
 
 extract_elements <- function(x, using = 'xpath'){
 
-  Sys.sleep(.5)
- # x <- trip_xpath_A
+  Sys.sleep(1)
+#  x <- trip_xpath_A
   
   using <- 'xpath'
   
+  find_elements <- function(x){
+    tryCatch(x,
+             error = function(c){
+               NULL
+             })
+    
+  }
+  
   repeat{
-  try(elements <- remDr$findElements(using = using, x), TRUE)
-    if(remDr$status != 7){
-      elements <- remDr$findElements(using = using, x)
-      break
-    }
+  elements <- find_elements(remDr$findElements(using = using, x))
+  if(!is.null(elements)){
+    break
+  }        
   }
   
   
@@ -157,8 +203,11 @@ extract_elements <- function(x, using = 'xpath'){
     return(trip_data)
   }
 
-data <- list()
 
+  Sys.sleep(1)
+  
+  
+data <- list()
 repeat{
 try(sapply(elements, extract_trip_from_element), TRUE)
 
@@ -168,9 +217,6 @@ try(sapply(elements, extract_trip_from_element), TRUE)
   }  
 }
   
-
-
-
 return(data)
 }
 
@@ -396,7 +442,7 @@ return(urls)
 }
 
 
-get_flight_data <- function(urls){
+get_flight_data <- function(urls, return_basic_data = FALSE, return_clean_data = FALSE){
 
   
 all_dates <- tibble()  
@@ -406,13 +452,20 @@ for(row in 1:nrow(urls)){
 
   remDr$navigate(urls$url[row])
 
+  zoomInJS <- "document.body.style.zoom='50%'"
+  
+  remDr$executeScript(script = zoomInJS)
 
   Sys.sleep(2)
 
   
   trip_xpath_A <- '//*[contains(concat( " ", @class, " " ), concat( " ", "no-touch", " " ))]'
   trip_xpath_B <- '//*[contains(concat( " ", @class, " " ), concat( " ", "skip-trip", " " ))]'
-
+  trip_xpath_C <- '//*[contains(concat( " ", @class, " " ), concat( " ", "trip", " " ))]' 
+  
+  
+  trip_paths <- list(trip_xpath_A, trip_xpath_C, trip_xpath_B)
+  
   data <- list()
   timeout <- FALSE
   start_time <- Sys.time()
@@ -420,26 +473,44 @@ for(row in 1:nrow(urls)){
 repeat{
   
   Sys.sleep(2)
-  data <- extract_elements(trip_xpath_A)
+  
+  data <- lapply(trip_paths, extract_elements)
+  lengths <- lapply(data, length) %>% unlist()
+  
+  data <- data[[min(which(lengths == max(lengths)))]]
+  
+  #data <- extract_elements(trip_xpath_A)
 
 
   if(length(data) > 3){
-    # print(data)
     break
   }
   
-  data <- extract_elements(trip_xpath_B)
+  #data <- extract_elements(trip_xpath_B)
   
   
-  if(length(data) > 3){
-    # print(data)
+  # if(length(data) > 3){
+  #   break
+  # }
+  
+  if(Sys.time() - start_time > 15){
+    timeout <- TRUE
     break
   }
   
+  if(return_basic_data == TRUE){
+    print(data)
+  }  
+  # print(data)
   remDr$refresh()
+  
+
   
 }
 
+
+  
+  
   
 repeat{
   
@@ -451,7 +522,10 @@ repeat{
                                              return = urls$end[row])
 
   
-  print(clean_data)
+  if(return_clean_data == TRUE){
+    print(clean_data)
+  }  
+  
   # clean_data$price <- as.numeric(gsub("\\$", "", clean_data$price))
 
 if(nrow(clean_data) > 1){
@@ -498,6 +572,10 @@ get_flight_data(urls)
 
 
 }
+
+
+
+
 
 
 
