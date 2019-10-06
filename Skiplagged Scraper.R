@@ -175,9 +175,15 @@ to_airport <- airport_codes %>%
 
 
 extract_elements <- function(x, using = 'xpath'){
-
+  
+  data <- list()
   Sys.sleep(1)
-#  x <- trip_xpath_A
+  
+  extract_trip_from_element <- function(x){
+    trip_data <- x$getElementText()
+    trip_data <- str_split(trip_data, "\\n", simplify = TRUE) %>% unlist()
+    return(trip_data)
+  }
   
   using <- 'xpath'
   
@@ -192,30 +198,12 @@ extract_elements <- function(x, using = 'xpath'){
   repeat{
   elements <- find_elements(remDr$findElements(using = using, x))
   if(!is.null(elements)){
+    elements <- find_elements(remDr$findElements(using = using, x))
+    data <- sapply(elements, extract_trip_from_element)
     break
   }        
   }
   
-  
-  extract_trip_from_element <- function(x){
-    trip_data <- x$getElementText()
-    trip_data <- str_split(trip_data, "\\n", simplify = TRUE) %>% unlist()
-    return(trip_data)
-  }
-
-
-  Sys.sleep(1)
-  
-  
-data <- list()
-repeat{
-try(sapply(elements, extract_trip_from_element), TRUE)
-
-  if(remDr$status != 7){
-    data <- sapply(elements, extract_trip_from_element)
-    break
-  }  
-}
   
 return(data)
 }
@@ -456,7 +444,6 @@ for(row in 1:nrow(urls)){
   
   remDr$executeScript(script = zoomInJS)
 
-  Sys.sleep(2)
 
   
   trip_xpath_A <- '//*[contains(concat( " ", @class, " " ), concat( " ", "no-touch", " " ))]'
@@ -474,25 +461,25 @@ repeat{
   
   Sys.sleep(2)
   
-  data <- lapply(trip_paths, extract_elements)
-  lengths <- lapply(data, length) %>% unlist()
+  data <- extract_elements(trip_xpath_C)
   
-  data <- data[[min(which(lengths == max(lengths)))]]
-  
-  #data <- extract_elements(trip_xpath_A)
-
-
   if(length(data) > 3){
     break
   }
   
-  #data <- extract_elements(trip_xpath_B)
+  data <- extract_elements(trip_xpath_B)
   
+  if(length(data) > 3){
+    break
+  }
   
-  # if(length(data) > 3){
-  #   break
-  # }
+  data <- extract_elements(trip_xpath_A)
   
+  if(length(data) > 3){
+    break
+  }
+  
+
   if(Sys.time() - start_time > 15){
     timeout <- TRUE
     break
@@ -515,9 +502,7 @@ repeat{
 repeat{
   
   Sys.sleep(.2)
- # row <- 1
-#  urls <- urls %>% filter(url == "https://skiplagged.com/flights/LAX/SEA/2019-10-09/2019-10-13")
-  
+
   clean_data <- data %>% raw_list_to_dataframe(leave = urls$start[row], 
                                              return = urls$end[row])
 
@@ -526,7 +511,7 @@ repeat{
     print(clean_data)
   }  
   
-  # clean_data$price <- as.numeric(gsub("\\$", "", clean_data$price))
+
 
 if(nrow(clean_data) > 1){
   clean_data$url <- urls$url[row]
@@ -573,41 +558,6 @@ get_flight_data(urls)
 
 }
 
-
-
-
-
-
-
-
-
-
-driver <- rsDriver(port = 4444L, browser = c("chrome"), chromever="76.0.3809.126")
-
-remDr <- driver[["client"]]
-
-
-
-
-options <- explore_prices("LAX", "SEA", duration = 14, interval = 1, window = 2)
-
-
-summarized_options <- options %>% group_by(leave, number_of_stops) %>% 
-  summarize(min_price = min(price),
-            median_price = median(price),
-            max_price = max(price)) %>% melt(id.vars = c("leave", "number_of_stops"))
-
-summarized_options %>%
-  ggplot(aes(x=as.Date(leave), y = value, color = variable)) +
-  geom_line() + 
-  geom_label(aes(x=as.Date(leave), y=value, color = "lowest_prices", label = paste0("$", value)), size = 3, 
-             data = (summarized_options %>% arrange(value) %>% .[c(1:10),])) + 
-  scale_y_continuous(labels = scales::dollar) + 
-  scale_x_date(date_labels = "%a %b %d", breaks = "14 days") +
-  labs(x="Date", y = "Price", color = "") + 
-  ggtitle(paste0(attr(options, which = "trip"), " ", attr(options, which = "duration"))) +
-  facet_grid(~paste0(number_of_stops, " Stops")) +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1)) # + ggthemes::theme_fivethirtyeight()
 
 
 # airlines_xpath <- '//*[contains(concat( " ", @class, " " ), concat( " ", "airlines-lg", " " ))]'
