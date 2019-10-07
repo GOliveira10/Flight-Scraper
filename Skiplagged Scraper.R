@@ -23,42 +23,42 @@ airport_codes$iata_code <- ifelse(is.na(airport_codes$iata_code) | airport_codes
 airport_codes <- airport_codes %>% filter(!is.na(iata_code) & type != "closed")
 airport_codes <- airport_codes %>% group_by(iata_code) %>% summarise_all(first)
 
-
-test_data <- function(rm=FALSE){
-  
-  if(rm == FALSE){
-  assign("from", "LAX", envir = .GlobalEnv)
-  assign("to", "SEA", envir = .GlobalEnv)
-  assign("depart_wday", NULL, envir = .GlobalEnv)
-  assign("return_wday", NULL, envir = .GlobalEnv)
-  assign("window", 10, envir = .GlobalEnv)
-  assign("window_start", Sys.Date(), envir = .GlobalEnv)
-  assign("leave", NULL, envir = .GlobalEnv)
-  assign("return", NULL, envir = .GlobalEnv)
-  assign("duration", 4, envir = .GlobalEnv)
-  assign("interval", 1, envir = .GlobalEnv)
-  assign("one_way", FALSE, envir = .GlobalEnv)
-  assign("try_alternate_routes", TRUE, envir = .GlobalEnv)
-  assign("row", 1, envir = .GlobalEnv)
-  } else{
-    
-    rm(list=c("from", 
-             "to", 
-             "depart_wday", 
-             "return_wday", 
-             "window", 
-             "window_start",
-             "leave",
-             "return",
-             "duration",
-             "interval",
-             "one_way",
-             "try_alternate_routes",
-             "row"))
-    
-  }
-  
-}
+# 
+# test_data <- function(rm=FALSE){
+#   
+#   if(rm == FALSE){
+#   assign("from", "LAX", envir = .GlobalEnv)
+#   assign("to", "SEA", envir = .GlobalEnv)
+#   assign("depart_wday", NULL, envir = .GlobalEnv)
+#   assign("return_wday", NULL, envir = .GlobalEnv)
+#   assign("window", 10, envir = .GlobalEnv)
+#   assign("window_start", Sys.Date(), envir = .GlobalEnv)
+#   assign("leave", NULL, envir = .GlobalEnv)
+#   assign("return", NULL, envir = .GlobalEnv)
+#   assign("duration", 4, envir = .GlobalEnv)
+#   assign("interval", 1, envir = .GlobalEnv)
+#   assign("one_way", FALSE, envir = .GlobalEnv)
+#   assign("try_alternate_routes", TRUE, envir = .GlobalEnv)
+#   assign("row", 1, envir = .GlobalEnv)
+#   } else{
+#     
+#     rm(list=c("from", 
+#              "to", 
+#              "depart_wday", 
+#              "return_wday", 
+#              "window", 
+#              "window_start",
+#              "leave",
+#              "return",
+#              "duration",
+#              "interval",
+#              "one_way",
+#              "try_alternate_routes",
+#              "row"))
+#     
+#   }
+#   
+# }
 
 
 
@@ -240,11 +240,17 @@ raw_list_to_dataframe <- function(x, leave, return){
                   arrival = trip_item[grepl("[0-9]{1,2}:[0-9]{2}[a-z]{2}", trip_item)][2],
                   price = trip_item[grepl("\\$[0-9]", trip_item)]
                   )
+    
+    row$duration <- gsub("h", "", row$duration) %>% as.numeric()
+    
     clean_data_frame <- bind_rows(clean_data_frame, row)
     
   }
 
 
+  
+  
+  
 
 if(nrow(clean_data_frame) != 0){
  # print(clean_data_frame)
@@ -280,20 +286,10 @@ explore_prices <- function(from = NULL,
                            one_way = FALSE,
                            try_alternate_routes = TRUE){
 
-  # from = "LAX"
-  # to = "SEA"
-  # depart_wday = NULL
-  # return_wday = NULL
-  # window = 10
-  # window_start = Sys.Date()
-  # leave = NULL
-  # return = NULL
-  # duration = 4
-  # interval = 1
-  # one_way = FALSE
-  # try_alternate_routes = TRUE
-  
-  
+ 
+if(!is.Date(window_start)){
+  window_start <- as.Date(window_start)
+}  
   
 if(!isTRUE(mget(x="scraper_environment", ifnotfound = FALSE)$scraper_environment)){
   scraper_environment <- new.env()
@@ -427,6 +423,8 @@ urls$type <- ifelse(urls$variable %in% c("url_3", "url_4"), "return_options", if
 
 return(urls)
 
+# End prepare data ####
+
 }
 
 
@@ -457,6 +455,8 @@ for(row in 1:nrow(urls)){
   timeout <- FALSE
   start_time <- Sys.time()
 
+  
+# Extract loop ####  
 repeat{
   
   Sys.sleep(2)
@@ -491,7 +491,7 @@ repeat{
   # print(data)
   remDr$refresh()
   
-
+# End extract loop ####
   
 }
 
@@ -531,6 +531,47 @@ if(timeout == TRUE){
 
 clean_data$type <- urls$type[row]
   
+
+
+
+intended_dest <- gsub("https://skiplagged.com/flights/", "", clean_data$url) 
+
+intended_dest <- str_extract_all(intended_dest, "[A-Z//]*")
+
+intended_dest <- lapply(intended_dest, paste0, collapse = "") %>% unlist()
+
+intended_dest <- gsub("/{2}", "", intended_dest)
+
+intended_dest <- str_split(intended_dest, "/", n = 2, simplify = TRUE) %>% as_tibble()
+names(intended_dest) <- c("from", "to")
+clean_data <- bind_cols(clean_data, intended_dest)
+
+routes <- str_split(clean_data$route, paste0("(?<=",clean_data$to,")-"))
+
+recombine_routes <- function(x){
+  
+  trip <- list()
+  hidden_leg <- ""
+  trip$route <- x[1]
+  
+
+  if(length(x) > 1){
+    hidden_leg <- paste0(x[2:length(x)], collapse = "-")
+  }
+  
+  trip$hidden_leg <- hidden_leg
+  return(trip)
+  
+}
+
+
+routes <- lapply(routes, recombine_trips) %>% bind_rows()
+
+clean_data$route <- routes$route
+clean_data$hidden_leg <- routes$hidden_leg
+clean_data$hidden_city <- ifelse(clean_data$hidden_leg != "", TRUE, FALSE)
+
+
 all_dates <- bind_rows(all_dates, clean_data)
 
 }
@@ -553,8 +594,9 @@ return(all_dates)
 
 urls <- prepare_data()
 
-get_flight_data(urls)
+all_dates <- get_flight_data(urls)
 
+return(all_dates)
 
 }
 

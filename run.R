@@ -8,7 +8,46 @@ remDr <- driver[["client"]]
 
 
 
-options <- explore_prices("LAX", "SEA", duration = 14, interval = 1, window = 2)
+options <- explore_prices("FAT", "SJU", duration = 4, interval = 1, window = 7, window_start = "2019-12-27")
+
+
+construct_depart_options <- function(x, depart_city, arrival_city){
+  
+  #x <- options 
+
+  
+  depart_options <- x %>% filter(type == "depart_options")
+  
+  depart_options <- depart_options %>% 
+    mutate(departure_time = as.POSIXct(paste0(leave, " ", departure))) %>%
+    mutate(arrival_time = departure_time + hours(as.numeric(gsub("h", "", duration))))
+  
+  first_leg <- depart_options %>% filter(from == depart_city)
+  second_leg <- depart_options %>% filter(to == arrival_city)
+  
+  trips <- full_join(first_leg, second_leg, by = c("to" = "from"))
+  
+  possible_trips <- trips %>% filter(arrival_time.x < departure_time.y)
+  
+  possible_trips <- possible_trips %>% mutate(price = price.x + price.y,
+                                              full_route = paste0(route.x, route.y, collapse = "-"),
+                                              full_duration = as.numeric(gsub("h", "", duration.x)) + as.numeric(gsub("h", "", duration.y)))
+  
+
+  
+  summary <- possible_trips %>% group_by(leave.x) %>% summarize(min_price = min(price),
+                                                     min_duration = min(duration))
+
+  
+  result <- list(possible_trips,
+                 summary)
+  
+  return(result)
+}
+
+
+
+round_trips <- options %>% filter(type == "normal")
 
 
 summarized_options <- options %>% group_by(leave, number_of_stops) %>% 
