@@ -367,7 +367,7 @@ if(!is.null(depart_wday) & !is.null(return_wday)){
   
 
 
-urls <- tibble(url_1 = skiplagged_url, url_2 = "", url_3 = "", url_4 = "", type = "normal")
+urls <- tibble(url_0 = skiplagged_url,  type = "normal") #url_2 = "", url_3 = "", url_4 = "",
 
 
 if(try_alternate_routes == TRUE){
@@ -436,6 +436,7 @@ for(row in 1:nrow(urls)){
 
 # row <- 1
 
+  message(paste0("Crawling url: ", row, " of ", nrow(urls)))
   remDr$navigate(urls$url[row])
 
   zoomInJS <- "document.body.style.zoom='50%'"
@@ -565,7 +566,7 @@ recombine_routes <- function(x){
 }
 
 
-routes <- lapply(routes, recombine_trips) %>% bind_rows()
+routes <- lapply(routes, recombine_routes) %>% bind_rows()
 
 clean_data$route <- routes$route
 clean_data$hidden_leg <- routes$hidden_leg
