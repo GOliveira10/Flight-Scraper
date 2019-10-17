@@ -312,7 +312,7 @@ skiplagged_url <- create_flight_url(from = from,
 
 
 
-# Find trip of x duration within a given window at a given interval  
+# Find trip of x duration within a given window at a given interval  ####
 if(is.null(leave) & !is.null(duration) & is.null(depart_wday)){  
   
 
@@ -339,7 +339,7 @@ skiplagged_url <- paste0(skiplagged_url, "/", dates$start, "/", dates$end)
 }
 
   
-# Find prices for a given week segment    
+# Find prices for a given week segment ####   
 if(!is.null(depart_wday) & !is.null(return_wday)){
 
   # depart_wday <- "1"
@@ -369,6 +369,9 @@ if(!is.null(depart_wday) & !is.null(return_wday)){
 
 urls <- tibble(url_0 = skiplagged_url,  type = "normal") #url_2 = "", url_3 = "", url_4 = "",
 
+
+
+# Construct list of alternate routes from nearby airports ####
 
 if(try_alternate_routes == TRUE){
   
@@ -496,9 +499,6 @@ repeat{
   
 }
 
-
-  
-  
   
 repeat{
   
@@ -601,6 +601,63 @@ return(all_dates)
 
 }
 
+
+
+construct_options <- function(x, depart_city, arrival_city, which_options){
+  
+  #x <- options 
+  
+  
+  depart_options <- x %>% filter(type == which_options)
+  
+  depart_options <- depart_options %>% 
+    mutate(departure_time = as.POSIXct(paste0(leave, " ", departure))) %>%
+    mutate(arrival_time = departure_time + hours(as.numeric(gsub("h", "", duration))))
+  
+  first_leg <- depart_options %>% filter(from == depart_city)
+  second_leg <- depart_options %>% filter(to == arrival_city)
+  
+  trips <- full_join(first_leg, second_leg, by = c("to" = "from"))
+  
+  possible_trips <- trips %>% filter(arrival_time.x < departure_time.y)
+  
+  possible_trips <- possible_trips %>% mutate(price = price.x + price.y,
+                                              route = paste0(route.x, route.y, collapse = "-"),
+                                              duration =  duration.x + duration.y)
+  
+  
+  
+  
+  
+  
+  summary <- possible_trips %>% group_by(leave.x) %>% summarize(min_price = min(price),
+                                                                min_duration = min(duration))
+  
+  
+  
+  names_possible <- names(possible_trips)
+  names_summary <- names(summary)  
+  
+  if(which_options == "depart_options"){
+    
+    
+    names_possible <- gsub("\\.x", "_departure_one_way", names_possible)
+    names_summary <- gsub("\\.x", "_departure_one_way", names_summary)
+    
+  } else{
+    
+    names_possible <- gsub("\\.x", "_arrival_one_way", names_possible)
+    names_summary <- gsub("\\.x", "_arrival_one_way", names_summary)
+  }
+  
+  names(possible_trips) <- names_possible
+  names(summary) <- names_summary
+  
+  result <- list(possible_trips,
+                 summary)
+  
+  return(result)
+}
 
 
 # airlines_xpath <- '//*[contains(concat( " ", @class, " " ), concat( " ", "airlines-lg", " " ))]'
